@@ -2,7 +2,7 @@ name: Node.js CI/CD for AWS EC2
 
 on:
   push:
-    branches: [ stag ] 
+    branches: [ stag ]
 
 jobs:
   build-and-test:
@@ -15,48 +15,49 @@ jobs:
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
-          node-version: '24' # Specify your project's Node version
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Code build
+      - name: Run Code Build
         run: npm run build
 
-  deploy:
+  deploy:                          
     needs: build-and-test
     runs-on: ubuntu-latest
 
     steps:
-     - name: Execute Remote SSH Commands & Deploy
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Execute Remote SSH Commands & Deploy
+        uses: appleboy/ssh-action@v1.0.3 
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC2_HOST }}         
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
           script: |
-            # Create app folder directory if it does not exist
+            # Create app directory if it does not exist
             mkdir -p ~/sample-workflows
             cd ~/sample-workflows
-            
-            # If git tracking is not initialized yet, clone or set up origin
+
+            # Clone or pull latest changes
             if [ ! -d ".git" ]; then
-              # Clones the repo into the current directory (.) if empty
-              git clone ${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+              # ✅ Fix 4: Correct token-authenticated clone URL format
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
             else
-              # Pull the latest changes
-              git pull origin stag
+              git pull origin stag   # ✅ Fix 5: Consistent branch name
             fi
 
-            # Install dependencies
+            # Install production dependencies
             echo "Installing dependencies..."
-            npm ci --production # Use 'npm install' if you don't have a package-lock.json
+            npm ci --omit=dev  # '--omit=dev' is the modern equivalent of '--production'
 
             # Start or restart the application with PM2
             echo "Starting/Reloading application with PM2..."
-            # Replace 'app.js' with your actual entry point (e.g., dist/main.js, index.js)
-            # '--name' gives your process a recognizable name in PM2
             pm2 describe sample-app > /dev/null 2>&1
             if [ $? -eq 0 ]; then
               echo "App is running. Reloading..."
@@ -66,5 +67,5 @@ jobs:
               pm2 start app.js --name "sample-app"
             fi
 
-            # Save the PM2 process list so it survives server reboots
+            # Persist PM2 process list across reboots
             pm2 save

@@ -10,10 +10,10 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6        
 
       - name: Setup Node.js Environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6      
         with:
           node-version: '24'
           cache: 'npm'
@@ -24,39 +24,34 @@ jobs:
       - name: Run Code Build
         run: npm run build
 
-  deploy:                          
+  deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6       
 
       - name: Execute Remote SSH Commands & Deploy
-        uses: appleboy/ssh-action@v1.0.3 
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}         
+          host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            # Create app directory if it does not exist
             mkdir -p ~/sample-workflows
             cd ~/sample-workflows
 
-            # Clone or pull latest changes
             if [ ! -d ".git" ]; then
-              # ✅ Fix 4: Correct token-authenticated clone URL format
               git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
             else
-              git pull origin stag   # ✅ Fix 5: Consistent branch name
+              git pull origin stag
             fi
 
-            # Install production dependencies
             echo "Installing dependencies..."
-            npm ci --omit=dev  # '--omit=dev' is the modern equivalent of '--production'
+            npm ci --omit=dev
 
-            # Start or restart the application with PM2
             echo "Starting/Reloading application with PM2..."
             pm2 describe sample-app > /dev/null 2>&1
             if [ $? -eq 0 ]; then
@@ -67,5 +62,4 @@ jobs:
               pm2 start app.js --name "sample-app"
             fi
 
-            # Persist PM2 process list across reboots
             pm2 save

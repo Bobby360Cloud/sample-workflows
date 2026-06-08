@@ -1,0 +1,70 @@
+name: Node.js CI/CD for AWS EC2
+
+on:
+  push:
+    branches: [ stag ] 
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24' # Specify your project's Node version
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Code build
+        run: npm run build
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+     - name: Execute Remote SSH Commands & Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Create app folder directory if it does not exist
+            mkdir -p ~/sample-workflows
+            cd ~/sample-workflows
+            
+            # If git tracking is not initialized yet, clone or set up origin
+            if [ ! -d ".git" ]; then
+              # Clones the repo into the current directory (.) if empty
+              git clone ${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+            else
+              # Pull the latest changes
+              git pull origin stag
+            fi
+
+            # Install dependencies
+            echo "Installing dependencies..."
+            npm ci --production # Use 'npm install' if you don't have a package-lock.json
+
+            # Start or restart the application with PM2
+            echo "Starting/Reloading application with PM2..."
+            # Replace 'app.js' with your actual entry point (e.g., dist/main.js, index.js)
+            # '--name' gives your process a recognizable name in PM2
+            pm2 describe sample-app > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              echo "App is running. Reloading..."
+              pm2 reload sample-app --update-env
+            else
+              echo "App is not running. Starting..."
+              pm2 start app.js --name "sample-app"
+            fi
+
+            # Save the PM2 process list so it survives server reboots
+            pm2 save
